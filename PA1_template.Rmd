@@ -1,0 +1,105 @@
+---
+  output: bookdown::html_document2
+  html_document: default
+  word_document: default
+---
+Activity monitoring data
+=========================
+
+```{r setoptions,include=FALSE}
+knitr::opts_chunk$set(echo=FALSE,warning=FALSE,message=FALSE,results="hide",
+                      fig.keep="all")
+```
+## Introduction
+
+It is now possible to collect a large amount of data about personal movement 
+using activity monitoring devices such as a Fitbit, Nike Fuelband, or Jawbone 
+Up. These type of devices are part of the “quantified self” movement – 
+a group of enthusiasts who take measurements about themselves regularly to 
+improve their health, to find patterns in their behavior, or because they are
+tech geeks. But these data remain under-utilized both because the raw data are 
+hard to obtain and there is a lack of statistical methods and software for 
+processing and interpreting the data.
+
+This assignment makes use of data from a personal activity monitoring device. 
+This device collects data at 5 minute intervals through out the day. 
+The data consists of two months of data from an anonymous individual collected 
+during the months of October and November, 2012 and include the number of steps 
+taken in 5 minute intervals each day.
+
+```{r readprocdata}
+fileUrl<-"https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+temp<-tempfile() # create a temporary file
+download.file(fileUrl,temp) #download file into temporary location
+activity<-read.csv(unz(temp,"activity.csv"))
+library(dplyr)
+activityGrp<-group_by(activity,date)
+activityDaily<-summarise(activityGrp,dailystep=sum(steps,na.rm=TRUE))
+source("formatNum.R")
+```
+
+### Total number of steps taken per day
+The median number of steps taken each day was 
+**`r formatNum(median(activityDaily$dailystep),0)`**, whilst the mean was
+**`r formatNum(mean(activityDaily$dailystep),0)`**, when missing values were not
+considered. A histogram displays the distribution of total steps in a day below 
+.Note that a considerable number of observations had missing 
+values, denoted in the 0 bar.
+
+```{r plothist,fig.cap="Histogram of total number of steps taken per day"}
+library(ggplot2)
+qplot(dailystep,data=activityDaily,ylab="Frequency",xlab="Total steps in a day",
+      binwidth=2500,geom="histogram",fill=I("springgreen2"),col=I("springgreen3"))
+```
+
+### Daily activity pattern
+```{r groupByInt}
+activityGrp<-group_by(activity,interval)
+activityInt<-summarise(activityGrp,avgstep=mean(steps,na.rm=TRUE))
+```
+The maximum number of steps on average was observed on the **`r activityInt$interval[which.max(activityInt$avgstep)]`th** interval.
+```{r plotscatt,fig.cap="Time series plot of average number of steps versus interval"}
+qplot(interval,avgstep,data=activityInt,ylab="Average number of steps during 
+      interval",xlab="Interval",col=I("steelblue1"),geom="line")
+```
+### Missing values
+``` {r missingcalc}
+totalrows<-nrow(activity)
+completerows<-sum(complete.cases(activity))
+missingrows<-totalrows-completerows
+library(Hmisc)
+imputedsteps<-impute(activity$steps,fun=mean(activity$steps,na.rm=TRUE))
+activityNew<-activity
+activityNew$steps<-imputedsteps
+activityGrp<-group_by(activityNew,date)
+activityNewDaily<-summarise(activityGrp,dailystep=sum(steps,na.rm=TRUE))
+```
+The dataset contained many missing values. Out of 
+**`r formatNum(totalrows,0)`** observations, only **`r formatNum(completerows,0)`**
+were complete with the remaining **`r formatNum(missingrows,0)`** missing data 
+on the number of steps.When missing values were imputed, the median number of 
+steps taken each day was **`r formatNum(median(activityNewDaily$dailystep),0)`**,
+whilst the mean was **`r formatNum(mean(activityNewDaily$dailystep),0)`**, both
+values higher than estimated when excluding missing data.
+```{r plothist2,fig.cap="Histogram of total number of steps taken per day with imputed data"}
+qplot(dailystep,data=activityNewDaily,ylab="Frequency",xlab="Total steps in a day (imputed)", binwidth=2500,geom="histogram",fill=I("violetred"),col=I("violetred1"))
+```
+### Differences between weekdays and weekends
+The plots below display the average number of steps at different intervals
+during weekdays and weekends.
+``` {r plotdaytype,fig.cap="Time series plot of interval versus average number of steps by type of day"}
+library(lubridate)
+activity$date<-ymd(activity$date)
+activity$day<-weekdays(activity$date)
+activity$dayType<-"Weekday"
+activity$dayType[activity$day=="Saturday"]<-"Weekend"
+activity$dayType[activity$day=="Sunday"]<-"Weekend"
+activityByDayType<-aggregate(activity,by=list(activity$interval,activity$dayType),
+                             FUN=mean,na.rm=TRUE)
+library(tidyverse)
+activityByDayType<-rename(activityByDayType,DayType=Group.2,Interval=Group.1)
+
+qplot(Interval,steps,data=activityByDayType,facets=.~DayType,
+ylab="Average number of steps during interval",xlab="Interval",
+col=DayType,geom="line")
+```
